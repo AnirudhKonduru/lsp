@@ -639,9 +639,9 @@ applyEdit doc edit = do
   getVersionedDoc doc
 
 -- | Returns the completions for the position in the document.
-getCompletions :: TextDocumentIdentifier -> Position -> Session [CompletionItem]
-getCompletions doc pos = do
-  rsp <- request STextDocumentCompletion (CompletionParams doc pos Nothing Nothing Nothing)
+getCompletions :: TextDocumentIdentifier -> Position -> Maybe Range -> Session [CompletionItem]
+getCompletions doc pos maybeRange = do
+  rsp <- request STextDocumentCompletion (CompletionParams doc pos maybeRange Nothing Nothing Nothing)
 
   case getResponseResult rsp of
     InL (List items) -> return items
@@ -650,34 +650,39 @@ getCompletions doc pos = do
 -- | Returns the references for the position in the document.
 getReferences :: TextDocumentIdentifier -- ^ The document to lookup in.
               -> Position -- ^ The position to lookup.
+              -> Maybe Range -- selection range
               -> Bool -- ^ Whether to include declarations as references.
               -> Session (List Location) -- ^ The locations of the references.
-getReferences doc pos inclDecl =
+getReferences doc pos maybeRange inclDecl =
   let ctx = ReferenceContext inclDecl
-      params = ReferenceParams doc pos Nothing Nothing ctx
+      params = ReferenceParams doc pos maybeRange Nothing Nothing ctx
   in getResponseResult <$> request STextDocumentReferences params
 
 -- | Returns the declarations(s) for the term at the specified position.
 getDeclarations :: TextDocumentIdentifier -- ^ The document the term is in.
                 -> Position -- ^ The position the term is at.
+                -> Maybe Range -- selection range
                 -> Session ([Location] |? [LocationLink])
 getDeclarations = getDeclarationyRequest STextDocumentDeclaration DeclarationParams
 
 -- | Returns the definition(s) for the term at the specified position.
 getDefinitions :: TextDocumentIdentifier -- ^ The document the term is in.
                -> Position -- ^ The position the term is at.
+               -> Maybe Range -- ^ The selection range
                -> Session ([Location] |? [LocationLink])
 getDefinitions = getDeclarationyRequest STextDocumentDefinition DefinitionParams
 
 -- | Returns the type definition(s) for the term at the specified position.
 getTypeDefinitions :: TextDocumentIdentifier -- ^ The document the term is in.
                    -> Position -- ^ The position the term is at.
+                   -> Maybe Range -- ^ The selection range
                    -> Session ([Location] |? [LocationLink])
 getTypeDefinitions = getDeclarationyRequest STextDocumentTypeDefinition TypeDefinitionParams
 
 -- | Returns the type definition(s) for the term at the specified position.
 getImplementations :: TextDocumentIdentifier -- ^ The document the term is in.
                    -> Position -- ^ The position the term is at.
+                   -> Maybe Range -- ^ The selection range
                    -> Session ([Location] |? [LocationLink])
 getImplementations = getDeclarationyRequest STextDocumentImplementation ImplementationParams
 
@@ -686,14 +691,16 @@ getDeclarationyRequest :: (ResponseResult m ~ (Location |? (List Location |? Lis
                        => SClientMethod m
                        -> (TextDocumentIdentifier
                             -> Position
+                            -> Maybe Range
                             -> Maybe ProgressToken
                             -> Maybe ProgressToken
                             -> MessageParams m)
                        -> TextDocumentIdentifier
                        -> Position
+                       -> Maybe Range
                        -> Session ([Location] |? [LocationLink])
-getDeclarationyRequest method paramCons doc pos = do
-  let params = paramCons doc pos Nothing Nothing
+getDeclarationyRequest method paramCons doc pos maybeRange = do
+  let params = paramCons doc pos maybeRange Nothing Nothing
   rsp <- request method params
   case getResponseResult rsp of
       InL loc -> pure (InL [loc])
@@ -701,24 +708,24 @@ getDeclarationyRequest method paramCons doc pos = do
       InR (InR (List locLinks)) -> pure (InR locLinks)
 
 -- | Renames the term at the specified position.
-rename :: TextDocumentIdentifier -> Position -> String -> Session ()
-rename doc pos newName = do
-  let params = RenameParams doc pos Nothing (T.pack newName)
+rename :: TextDocumentIdentifier -> Position -> Maybe Range -> String -> Session ()
+rename doc pos maybeRange newName = do
+  let params = RenameParams doc pos maybeRange Nothing (T.pack newName)
   rsp <- request STextDocumentRename params
   let wEdit = getResponseResult rsp
       req = RequestMessage "" (IdInt 0) SWorkspaceApplyEdit (ApplyWorkspaceEditParams Nothing wEdit)
   updateState (FromServerMess SWorkspaceApplyEdit req)
 
 -- | Returns the hover information at the specified position.
-getHover :: TextDocumentIdentifier -> Position -> Session (Maybe Hover)
-getHover doc pos =
-  let params = HoverParams doc pos Nothing
+getHover :: TextDocumentIdentifier -> Position -> Maybe Range -> Session (Maybe Hover)
+getHover doc pos maybeRange =
+  let params = HoverParams doc pos maybeRange Nothing
   in getResponseResult <$> request STextDocumentHover params
 
 -- | Returns the highlighted occurrences of the term at the specified position
-getHighlights :: TextDocumentIdentifier -> Position -> Session (List DocumentHighlight)
-getHighlights doc pos =
-  let params = DocumentHighlightParams doc pos Nothing Nothing
+getHighlights :: TextDocumentIdentifier -> Position -> Maybe Range -> Session (List DocumentHighlight)
+getHighlights doc pos maybeRange =
+  let params = DocumentHighlightParams doc pos maybeRange Nothing Nothing
   in getResponseResult <$> request STextDocumentDocumentHighlight params
 
 -- | Checks the response for errors and throws an exception if needed.

@@ -46,6 +46,8 @@ data TextDocumentPositionParams =
       _textDocument :: TextDocumentIdentifier
     , -- | The position inside the text document.
       _position     :: Position
+    , -- | The selected range, optionally.
+      _range :: Maybe Range
     } deriving (Show, Read, Eq)
 
 deriveJSON lspOptions ''TextDocumentPositionParams
